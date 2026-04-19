@@ -137,6 +137,14 @@
               @click="toggleSortDirection"
             />
           </el-tooltip>
+          <!-- 视图切换 -->
+          <el-tooltip :content="viewMode === 'grid' ? '切换为列表视图' : '切换为卡片视图'" placement="bottom">
+            <el-button
+              :icon="viewMode === 'grid' ? Operation : Grid"
+              circle
+              @click="viewMode = viewMode === 'grid' ? 'list' : 'grid'"
+            />
+          </el-tooltip>
         </div>
         
         <div class="header-right">
@@ -367,7 +375,8 @@
         </div>
         
         <div v-else class="accounts-container">
-          <div class="accounts-grid">
+          <!-- 卡片视图 -->
+          <div v-if="viewMode === 'grid'" class="accounts-grid">
             <AccountCard
               v-for="account in accountsStore.paginatedAccounts"
               :key="account.id"
@@ -377,6 +386,105 @@
               @select="handleAccountSelect(account.id, $event)"
               @update="handleAccountUpdate"
             />
+          </div>
+          <!-- 列表视图 -->
+          <div v-else class="accounts-list">
+            <el-table
+              :data="accountsStore.paginatedAccounts"
+              stripe
+              highlight-current-row
+              size="default"
+              @selection-change="handleTableSelectionChange"
+              ref="listTableRef"
+              row-key="id"
+              table-layout="auto"
+            >
+              <el-table-column type="selection" width="42" align="center" :reserve-selection="true" />
+              <el-table-column label="邮箱" min-width="260">
+                <template #default="{ row }">
+                  <div class="list-email-cell">
+                    <span class="list-email" @click.stop="copyToClipboard(row.email)">{{ row.email }}</span>
+                    <el-tag v-if="row.nickname" size="small" type="warning" effect="light" class="list-tag-gap">{{ row.nickname }}</el-tag>
+                    <el-tag v-if="row.auth_provider === 'devin'" size="small" type="success" effect="dark" class="list-tag-gap">Devin</el-tag>
+                    <el-tag v-if="row.email === currentWindsurfEmail" size="small" type="primary" effect="dark" class="list-tag-gap">当前</el-tag>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="套餐" min-width="100" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.plan_name" :type="row.plan_name?.toLowerCase() === 'free' ? 'info' : 'success'" size="small" effect="plain">{{ row.plan_name }}</el-tag>
+                  <span v-else class="list-placeholder">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="配额" min-width="220">
+                <template #default="{ row }">
+                  <template v-if="row.billing_strategy === 2">
+                    <div class="list-quota-row">
+                      <span class="list-quota-label">日</span>
+                      <span class="list-quota-val">{{ row.daily_quota_remaining_percent ?? 0 }}%</span>
+                      <el-progress :percentage="row.daily_quota_remaining_percent ?? 0" :stroke-width="6" :show-text="false" class="list-progress" />
+                    </div>
+                    <div class="list-quota-row">
+                      <span class="list-quota-label">周</span>
+                      <span class="list-quota-val">{{ row.weekly_quota_remaining_percent ?? 0 }}%</span>
+                      <el-progress :percentage="row.weekly_quota_remaining_percent ?? 0" :stroke-width="6" :show-text="false" color="#e6a23c" class="list-progress" />
+                    </div>
+                  </template>
+                  <template v-else-if="row.total_quota">
+                    <div class="list-quota-row">
+                      <span class="list-quota-text">{{ formatQuotaVal(row.used_quota) }} / {{ formatQuotaVal(row.total_quota) }}</span>
+                      <el-progress :percentage="getCreditsPercent(row)" :stroke-width="6" :show-text="false" :color="getCreditsColor(row)" class="list-progress" />
+                      <span class="list-quota-val">{{ getCreditsPercent(row) }}%</span>
+                    </div>
+                  </template>
+                  <span v-else class="list-placeholder">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" min-width="72" align="center">
+                <template #default="{ row }">
+                  <el-tag
+                    :type="getListStatusType(row)"
+                    size="small" effect="dark" round
+                  >{{ getListStatusText(row) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="分组" min-width="85" align="center" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <span class="list-group-text">{{ row.group || '默认分组' }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="到期" min-width="120" align="center">
+                <template #default="{ row }">
+                  <template v-if="row.subscription_expires_at">
+                    <span class="list-expiry" :style="{ color: getExpiryColor(row.subscription_expires_at) }">{{ formatDate(row.subscription_expires_at) }}</span>
+                    <span :class="['list-expiry-badge', getExpiryBadgeClass(row.subscription_expires_at)]">{{ getExpiryBadgeText(row.subscription_expires_at) }}</span>
+                  </template>
+                  <span v-else class="list-placeholder">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="Token" min-width="90" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.token_expires_at" :type="getTokenExpiryType(row.token_expires_at)" size="small" effect="light">
+                    {{ formatDate(row.token_expires_at) }}
+                  </el-tag>
+                  <span v-else class="list-placeholder">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="创建" min-width="90" align="center">
+                <template #default="{ row }">
+                  <span class="list-date-text">{{ formatDate(row.created_at) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="标签" min-width="120" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <template v-if="row.tags && row.tags.length">
+                    <el-tag v-for="tag in row.tags.slice(0, 3)" :key="tag" size="small" effect="light" class="list-tag-item">{{ tag }}</el-tag>
+                    <span v-if="row.tags.length > 3" class="list-tag-more">+{{ row.tags.length - 3 }}</span>
+                  </template>
+                  <span v-else class="list-placeholder">-</span>
+                </template>
+              </el-table-column>
+            </el-table>
           </div>
           
           <!-- 分页组件 -->
@@ -589,7 +697,9 @@ import {
   Timer,
   Switch,
   SortUp,
-  SortDown
+  SortDown,
+  Operation,
+  Grid
 } from '@element-plus/icons-vue';
 import { useAccountsStore, useSettingsStore, useUIStore } from '@/store';
 import { apiService, settingsApi, accountApi, devinApi } from '@/api';
@@ -631,6 +741,107 @@ const batchGroupTarget = ref('');
 const isBatchUpdatingGroup = ref(false);
 const showAutoResetDialog = ref(false);
 const showCardGeneratorDialog = ref(false);
+const viewMode = ref<'grid' | 'list'>('grid');
+const listTableRef = ref<any>(null);
+
+// 列表视图：表格选择变更
+function handleTableSelectionChange(rows: any[]) {
+  accountsStore.selectedAccounts.clear();
+  rows.forEach((r: any) => accountsStore.selectedAccounts.add(r.id));
+}
+
+// 列表视图：复制到剪贴板
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    ElMessage.success('已复制');
+  } catch { ElMessage.error('复制失败'); }
+}
+
+// 列表视图：格式化日期
+function formatDate(dateStr: string) {
+  if (!dateStr) return '-';
+  return dayjs(dateStr).format('YYYY-MM-DD');
+}
+
+// 列表视图：到期颜色
+function getExpiryColor(dateStr: string) {
+  if (!dateStr) return '#909399';
+  const days = dayjs(dateStr).diff(dayjs(), 'day');
+  if (days < 0) return '#f56c6c';
+  if (days < 7) return '#e6a23c';
+  return '#67c23a';
+}
+
+// 列表视图：到期剩余天数文本
+function getExpiryBadgeText(dateStr: string) {
+  if (!dateStr) return '';
+  const days = dayjs(dateStr).diff(dayjs(), 'day');
+  if (days < 0) return '已过期';
+  if (days === 0) return '今天';
+  if (days <= 7) return `${days}天`;
+  return `${days}天`;
+}
+
+// 列表视图：到期徽章样式
+function getExpiryBadgeClass(dateStr: string) {
+  if (!dateStr) return '';
+  const days = dayjs(dateStr).diff(dayjs(), 'day');
+  if (days < 0) return 'badge-expired';
+  if (days <= 7) return 'badge-soon';
+  return 'badge-ok';
+}
+
+// 列表视图：Token过期类型
+function getTokenExpiryType(dateStr: string) {
+  if (!dateStr) return 'info';
+  const hours = dayjs(dateStr).diff(dayjs(), 'hour');
+  if (hours < 0) return 'danger';
+  if (hours < 24) return 'warning';
+  return 'success';
+}
+
+// 列表视图：状态类型
+function getListStatusType(row: any) {
+  const plan = row.plan_name?.toLowerCase();
+  const isPaid = plan && plan !== 'free';
+  if (isPaid && row.subscription_active === false) return 'info';
+  if (row.is_disabled) return 'warning';
+  if (row.status === 'active') return 'success';
+  if (row.status === 'error') return 'danger';
+  return 'info';
+}
+
+// 列表视图：状态文本
+function getListStatusText(row: any) {
+  const plan = row.plan_name?.toLowerCase();
+  const isPaid = plan && plan !== 'free';
+  if (isPaid && row.subscription_active === false) return '未激活';
+  if (row.is_disabled) return '禁用';
+  if (row.status === 'active') return '正常';
+  if (row.status === 'error') return '错误';
+  return '离线';
+}
+
+// 列表视图：格式化配额值（除以100）
+function formatQuotaVal(num: number | undefined | null) {
+  if (!num) return '0.00';
+  return (num / 100).toFixed(2);
+}
+
+// 列表视图：CREDITS百分比
+function getCreditsPercent(row: any) {
+  if (!row.total_quota || !row.used_quota) return 0;
+  return Math.min(Math.round((row.used_quota / row.total_quota) * 100), 100);
+}
+
+// 列表视图：CREDITS颜色
+function getCreditsColor(row: any) {
+  const p = getCreditsPercent(row);
+  if (p < 50) return '#10b981';
+  if (p < 80) return '#f59e0b';
+  return '#ef4444';
+}
 
 // 排序相关
 const currentSortField = ref<string>('custom');
@@ -2606,6 +2817,151 @@ onUnmounted(() => {
   width: 100%;
   padding: 0;
 }
+
+/* 列表视图 */
+.accounts-list {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.accounts-list :deep(.el-table) {
+  --el-table-border-color: rgba(0, 0, 0, 0.04);
+  --el-table-header-bg-color: #f8f9fb;
+  --el-table-row-hover-bg-color: #f0f7ff;
+  font-size: 13px;
+}
+
+.accounts-list :deep(.el-table th.el-table__cell) {
+  font-weight: 600;
+  color: #4a5568;
+  font-size: 12px;
+  padding: 10px 0;
+  text-align: center;
+}
+
+.accounts-list :deep(.el-table td.el-table__cell) {
+  padding: 10px 0;
+  vertical-align: middle;
+  text-align: center;
+}
+
+.accounts-list :deep(.el-table .cell) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.accounts-list :deep(.el-table .el-table__row) {
+  transition: background 0.2s;
+}
+
+.list-email-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.list-email {
+  cursor: pointer;
+  font-weight: 500;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  transition: color 0.2s;
+}
+
+.list-email:hover {
+  color: #409eff;
+  text-decoration: underline;
+}
+
+.list-tag-gap { flex-shrink: 0; }
+
+.list-placeholder { color: #c0c4cc; font-size: 12px; }
+
+.list-group-text { font-size: 12px; color: #909399; }
+
+.list-expiry { font-size: 12px; font-weight: 500; }
+
+.list-quota-text { font-size: 12px; color: #606266; font-weight: 500; }
+
+.list-quota-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.8;
+}
+
+.list-quota-label {
+  font-size: 11px;
+  color: #909399;
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.list-quota-val {
+  font-size: 11px;
+  color: #606266;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.list-progress {
+  flex: 1;
+  min-width: 80px;
+}
+
+.list-tag-item { margin-right: 4px; }
+
+.list-tag-more { font-size: 11px; color: #909399; }
+
+.list-date-text { font-size: 12px; color: #909399; }
+
+.list-expiry-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.badge-expired { background: #fef0f0; color: #f56c6c; }
+.badge-soon { background: #fdf6ec; color: #e6a23c; }
+.badge-ok { background: #f0f9eb; color: #67c23a; }
+
+:root.dark .badge-expired { background: rgba(245,108,108,0.15); }
+:root.dark .badge-soon { background: rgba(230,162,60,0.15); }
+:root.dark .badge-ok { background: rgba(103,194,58,0.15); }
+
+/* 暗色模式 */
+:root.dark .accounts-list {
+  background: #1e1e1e;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+:root.dark .accounts-list :deep(.el-table) {
+  --el-table-bg-color: #1e1e1e;
+  --el-table-tr-bg-color: #1e1e1e;
+  --el-table-header-bg-color: #262626;
+  --el-table-row-hover-bg-color: #2a2a2a;
+  --el-table-border-color: rgba(255, 255, 255, 0.06);
+  color: #cfd3dc;
+}
+
+:root.dark .list-email { color: #e5eaf3; }
+:root.dark .list-quota-text { color: #cfd3dc; }
+:root.dark .list-quota-val { color: #cfd3dc; }
+:root.dark .list-group-text { color: #8b95a5; }
 
 /* 响应式布局 */
 @media (max-width: 1400px) {

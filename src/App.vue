@@ -67,6 +67,21 @@ const disableDebugKeys = (e: KeyboardEvent) => {
   return true;
 };
 
+// ===== MOCK 数据（开发预览用，打包前删除） =====
+const MOCK_ENABLED = !window.__TAURI_INTERNALS__;
+const mockAccounts = [
+  { id: '1', email: 'alice@gmail.com', password: '123456', nickname: 'Alice', tags: ['主力', 'Pro'], group: '默认分组', status: 'active' as const, plan_name: 'Pro', used_quota: 3200, total_quota: 10000, created_at: '2025-12-01', token_expires_at: '2026-05-20', subscription_expires_at: '2026-06-15', subscription_active: true, billing_strategy: 1, is_disabled: false, auth_provider: 'firebase' as const },
+  { id: '2', email: 'bob.test@outlook.com', password: '123456', nickname: 'Bob', tags: ['备用'], group: '默认分组', status: 'active' as const, plan_name: 'Teams', used_quota: 8500, total_quota: 10000, created_at: '2026-01-10', token_expires_at: '2026-05-18', subscription_expires_at: '2026-04-22', subscription_active: true, billing_strategy: 1, is_disabled: false },
+  { id: '3', email: 'charlie@proton.me', password: '123456', nickname: '', tags: ['测试'], group: '测试组', status: 'active' as const, plan_name: 'Trial', used_quota: 0, total_quota: 5000, created_at: '2026-03-20', token_expires_at: '2026-05-01', subscription_expires_at: '2026-05-02', subscription_active: true, billing_strategy: 2, daily_quota_remaining_percent: 85, weekly_quota_remaining_percent: 42, is_disabled: false },
+  { id: '4', email: 'david.dev@yahoo.com', password: '123456', nickname: 'David', tags: ['Pro', 'VIP'], group: '默认分组', status: 'error' as const, plan_name: 'Pro', used_quota: 9999, total_quota: 10000, created_at: '2025-11-15', is_disabled: false },
+  { id: '5', email: 'eve.smith@hotmail.com', password: '123456', nickname: 'Eve', tags: [], group: '默认分组', status: 'active' as const, plan_name: 'Free', used_quota: 200, total_quota: 500, created_at: '2026-04-01', token_expires_at: '2026-06-01', is_disabled: false },
+  { id: '6', email: 'frank@devin.ai', password: '123456', nickname: 'Frank', tags: ['Devin'], group: '测试组', status: 'active' as const, plan_name: 'Teams', used_quota: 1500, total_quota: 10000, created_at: '2026-02-14', token_expires_at: '2026-05-25', subscription_expires_at: '2026-07-01', subscription_active: true, billing_strategy: 2, daily_quota_remaining_percent: 100, weekly_quota_remaining_percent: 78, is_disabled: false, auth_provider: 'devin' as const },
+  { id: '7', email: 'grace@company.io', password: '123456', nickname: 'Grace', tags: ['企业'], group: '企业组', status: 'active' as const, plan_name: 'Enterprise', used_quota: 5000, total_quota: 50000, created_at: '2026-01-20', token_expires_at: '2026-08-01', subscription_expires_at: '2026-12-31', subscription_active: true, billing_strategy: 1, is_disabled: false },
+  { id: '8', email: 'hacker@test.dev', password: '123456', nickname: 'Hack', tags: ['测试', '备用'], group: '测试组', status: 'inactive' as const, plan_name: 'Pro', used_quota: 0, total_quota: 10000, created_at: '2026-04-10', is_disabled: true },
+  { id: '9', email: 'ivan.long.email.address@very-long-domain-name.example.com', password: '123456', nickname: '长邮箱测试', tags: ['Pro'], group: '默认分组', status: 'active' as const, plan_name: 'Pro', used_quota: 7777, total_quota: 10000, created_at: '2026-03-05', token_expires_at: '2026-05-30', subscription_expires_at: '2026-08-15', subscription_active: true, billing_strategy: 1, is_disabled: false },
+  { id: '10', email: 'julia@qq.com', password: '123456', nickname: 'Julia', tags: ['主力', 'VIP', '企业'], group: '企业组', status: 'active' as const, plan_name: 'Teams Ultimate', used_quota: 2000, total_quota: 100000, created_at: '2026-04-15', token_expires_at: '2026-06-30', subscription_expires_at: '2027-04-15', subscription_active: true, billing_strategy: 1, is_disabled: false },
+];
+
 onMounted(async () => {
   // 禁用右键菜单
   document.addEventListener('contextmenu', disableContextMenu);
@@ -74,7 +89,15 @@ onMounted(async () => {
   // 禁用调试快捷键
   document.addEventListener('keydown', disableDebugKeys);
   
-  // 获取并设置应用标题（包含版本号）
+  if (MOCK_ENABLED) {
+    // 无 Tauri 后端时注入 mock 数据
+    document.title = 'Windsurf Account Manager (Mock Preview)';
+    accountsStore.accounts.splice(0, accountsStore.accounts.length, ...mockAccounts as any);
+    accountsStore.loading = false;
+    uiStore.setTheme('light');
+    return;
+  }
+  
   try {
     const title = await invoke<string>('get_app_title');
     document.title = title;
