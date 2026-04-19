@@ -875,10 +875,9 @@ async function handleListRefreshToken(row: Account) {
 }
 
 // 列表视图操作：重新登录
-async function handleListLogin(row: Account) {
-  try {
-    uiStore.openEditDialog(row.id);
-  } catch (e) { ElMessage.error(`操作失败: ${e}`); }
+function handleListLogin(row: Account) {
+  uiStore.currentEditingAccountId = row.id;
+  uiStore.showEditAccountDialog = true;
 }
 
 // 列表视图操作：一键切号
