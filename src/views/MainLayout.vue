@@ -418,26 +418,28 @@
               </el-table-column>
               <el-table-column label="配额" min-width="220">
                 <template #default="{ row }">
-                  <template v-if="row.billing_strategy === 2">
-                    <div class="list-quota-row">
-                      <span class="list-quota-label">日</span>
-                      <span class="list-quota-val">{{ row.daily_quota_remaining_percent ?? 0 }}%</span>
-                      <el-progress :percentage="row.daily_quota_remaining_percent ?? 0" :stroke-width="6" :show-text="false" class="list-progress" />
-                    </div>
-                    <div class="list-quota-row">
-                      <span class="list-quota-label">周</span>
-                      <span class="list-quota-val">{{ row.weekly_quota_remaining_percent ?? 0 }}%</span>
-                      <el-progress :percentage="row.weekly_quota_remaining_percent ?? 0" :stroke-width="6" :show-text="false" color="#e6a23c" class="list-progress" />
-                    </div>
-                  </template>
-                  <template v-else-if="row.total_quota">
-                    <div class="list-quota-row">
-                      <span class="list-quota-text">{{ formatQuotaVal(row.used_quota) }} / {{ formatQuotaVal(row.total_quota) }}</span>
-                      <el-progress :percentage="getCreditsPercent(row)" :stroke-width="6" :show-text="false" :color="getCreditsColor(row)" class="list-progress" />
-                      <span class="list-quota-val">{{ getCreditsPercent(row) }}%</span>
-                    </div>
-                  </template>
-                  <span v-else class="list-placeholder">-</span>
+                  <div class="list-quota-wrap">
+                    <template v-if="row.billing_strategy === 2">
+                      <div class="list-quota-row">
+                        <span class="list-quota-label">日</span>
+                        <span class="list-quota-val">{{ row.daily_quota_remaining_percent ?? 0 }}%</span>
+                        <el-progress :percentage="row.daily_quota_remaining_percent ?? 0" :stroke-width="6" :show-text="false" class="list-progress" />
+                      </div>
+                      <div class="list-quota-row">
+                        <span class="list-quota-label">周</span>
+                        <span class="list-quota-val">{{ row.weekly_quota_remaining_percent ?? 0 }}%</span>
+                        <el-progress :percentage="row.weekly_quota_remaining_percent ?? 0" :stroke-width="6" :show-text="false" color="#e6a23c" class="list-progress" />
+                      </div>
+                    </template>
+                    <template v-else-if="row.total_quota">
+                      <div class="list-quota-row">
+                        <span class="list-quota-text">{{ formatQuotaVal(row.used_quota) }} / {{ formatQuotaVal(row.total_quota) }}</span>
+                        <el-progress :percentage="getCreditsPercent(row)" :stroke-width="6" :show-text="false" :color="getCreditsColor(row)" class="list-progress" />
+                        <span class="list-quota-val">{{ getCreditsPercent(row) }}%</span>
+                      </div>
+                    </template>
+                    <span v-else class="list-placeholder">-</span>
+                  </div>
                 </template>
               </el-table-column>
               <el-table-column label="状态" min-width="72" align="center">
@@ -446,11 +448,6 @@
                     :type="getListStatusType(row)"
                     size="small" effect="dark" round
                   >{{ getListStatusText(row) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="分组" min-width="85" align="center" show-overflow-tooltip>
-                <template #default="{ row }">
-                  <span class="list-group-text">{{ row.group || '默认分组' }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="到期" min-width="120" align="center">
@@ -482,6 +479,24 @@
                     <span v-if="row.tags.length > 3" class="list-tag-more">+{{ row.tags.length - 3 }}</span>
                   </template>
                   <span v-else class="list-placeholder">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" min-width="160" align="center" fixed="right">
+                <template #default="{ row }">
+                  <div class="list-actions">
+                    <el-tooltip content="刷新Token" placement="top">
+                      <el-button size="small" :icon="RefreshRight" circle @click.stop="handleListRefreshToken(row)" />
+                    </el-tooltip>
+                    <el-tooltip content="重新登录" placement="top">
+                      <el-button size="small" :icon="Key" circle @click.stop="handleListLogin(row)" />
+                    </el-tooltip>
+                    <el-tooltip content="一键切号" placement="top">
+                      <el-button size="small" :icon="Switch" circle type="success" plain @click.stop="handleListSwitch(row)" />
+                    </el-tooltip>
+                    <el-tooltip content="删除" placement="top">
+                      <el-button size="small" :icon="Delete" circle type="danger" plain @click.stop="handleListDelete(row)" />
+                    </el-tooltip>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
@@ -696,6 +711,7 @@ import {
   DocumentChecked,
   Timer,
   Switch,
+  Key,
   SortUp,
   SortDown,
   Operation,
@@ -841,6 +857,53 @@ function getCreditsColor(row: any) {
   if (p < 50) return '#10b981';
   if (p < 80) return '#f59e0b';
   return '#ef4444';
+}
+
+// 列表视图操作：刷新Token
+async function handleListRefreshToken(row: Account) {
+  try {
+    const result = await apiService.refreshToken(row.id);
+    if (result.success) {
+      ElMessage.success('Token刷新成功');
+      const updated = await accountApi.getAccount(row.id);
+      if (result.expires_at) updated.token_expires_at = result.expires_at;
+      await accountsStore.updateAccount(updated);
+    } else {
+      ElMessage.error('Token刷新失败');
+    }
+  } catch (e) { ElMessage.error(`操作失败: ${e}`); }
+}
+
+// 列表视图操作：重新登录
+async function handleListLogin(row: Account) {
+  try {
+    uiStore.openEditDialog(row.id);
+  } catch (e) { ElMessage.error(`操作失败: ${e}`); }
+}
+
+// 列表视图操作：一键切号
+async function handleListSwitch(row: Account) {
+  try {
+    const result = await apiService.switchAccount(row.id);
+    if (result.success) {
+      ElMessage.success('切号成功');
+      await accountsStore.loadAccounts();
+    } else {
+      ElMessage.error('切号失败');
+    }
+  } catch (e) { ElMessage.error(`操作失败: ${e}`); }
+}
+
+// 列表视图操作：删除
+async function handleListDelete(row: Account) {
+  try {
+    await ElMessageBox.confirm(`确定删除 ${row.email} 吗？`, '确认删除', { type: 'warning' });
+    await accountApi.deleteAccount(row.id);
+    ElMessage.success('删除成功');
+    await accountsStore.loadAccounts();
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(`删除失败: ${e}`);
+  }
 }
 
 // 排序相关
@@ -2852,6 +2915,19 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.list-quota-wrap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .accounts-list :deep(.el-table .el-table__row) {
